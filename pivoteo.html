@@ -1136,7 +1136,15 @@ const SLOTS=[
 
 /* ---------- sincronía con el docente ---------- */
 let _prevBlock=null;
+/* el docente reinició desde cero (o me quitó): vuelvo a la llegada, con nombre y avatar prellenados, y borro mi ficha anterior */
+function hardReset(title, why){ const keep={name:S.name, avatar:S.avatar, desafio:S.desafio, rubro:S.rubro, linea:S.linea}; const oldSid=S.sid; try{ localStorage.removeItem(LS_KEY()); }catch(e){} S=Object.assign(newState(), keep); S.arr={step:1}; saveLocal(); if(oldSid) Sync.removeStudent(oldSid).catch(()=>{}); render(); window.scrollTo(0,0); modal(`<h2>${esc(title)}</h2><p class="muted">${esc(why)}</p><div class="row"><button class="btn" data-act="modal-close" type="button">Entendido</button></div>`); }
+/* el docente volvió a la sala de espera: conservo mi trabajo, pero las etapas vuelven a estar por marcar */
+function softReset(){ S.done={}; S.doneAt={}; S.doneSec={}; S.needMore=null; S.status=null; S.react=null; S.step={}; S.stepAt={}; S.vote=null; S.view=0; Object.keys(S.met||{}).forEach(k=>{ if(/^(over|ci1|ci2|poco|sfin|v10|v0|voted_)/.test(k)) delete S.met[k]; }); persist(); render(); say('El docente volvió a la sala de espera. Tu trabajo sigue guardado: cuando abra la etapa 1, revisas lo tuyo y la marcas lista de nuevo.', [{l:'Ya',a:'beau-close'}]); }
 function onStateChange(st){ ST=st||null; const blk=ST? (ST.block||0) : 0;
+  if(S.joined && ST){ const j=S.joinedAt||0;
+    if(ST.resetAt && ST.resetAt>j){ _prevBlock=blk; hardReset('El docente reinició la sesión', 'Se empieza de cero: tu ficha anterior se borró del panel. Entra de nuevo con tu nombre (ya viene escrito) y espera a que abra la etapa 1.'); return; }
+    if(ST.kicked && ST.kicked[S.sid] && ST.kicked[S.sid]>j){ _prevBlock=blk; hardReset('Te quitaron de la sesión', 'El docente quitó tu ficha del panel. Si fue un error, vuelve a entrar con tu nombre: tu avance en este teléfono no se pierde, pero partes con una ficha nueva.'); return; }
+    if(ST.restartAt && ST.restartAt>j && ST.restartAt>(S.lastRestart||0)){ S.lastRestart=ST.restartAt; softReset(); } }
   if(S.joined){ if(_prevBlock!=null && blk>_prevBlock){ S.view=blk; S.needMore=null; persist(); say(vary('abrio',BEAU.abrio), [{l:'Vamos',a:'beau-close'}]); S.met['over'+blk]=false; }
     if(S.view>blk) S.view=blk; if(_prevBlock===null && S.view===0 && blk>0) S.view=blk; }
   _prevBlock=blk; render(); }
@@ -1465,7 +1473,7 @@ const ACT={
   'arr-back':()=>{ S.arr.step=Math.max(1,(S.arr.step||1)-1); persist(); render(); window.scrollTo(0,0); },
   'desafio':(el)=>{ S.desafio=el.dataset.id; persist(); render(); if(S.desafio==='otro'){ const i=$('#in-rubro'); if(i) i.focus(); } },
   'join':()=>{ for(const k of arrSteps()){ if(!arrValidate(k)){ const idx=arrSteps().indexOf(k)+1; S.arr.step=idx; render(); return; } }
-    S.joined=true; S.joinedAt=Sync.now(); if(ST && ST.block) S.view=ST.block; S.tour={step:1, done:false}; persist(); pushRemote(); render(); window.scrollTo(0,0); },
+    S.joined=true; S.joinedAt=Sync.now(); S.lastRestart=(ST&&ST.restartAt)||0; if(ST && ST.block) S.view=ST.block; S.tour={step:1, done:false}; persist(); pushRemote(); render(); window.scrollTo(0,0); },
   'tour-next':()=>{ const T=S.tour; if((T.step||1)>=BEAU.tour.length){ T.done=true; persist(); render(); say((S.via==='definido'? BEAU.profundiza : BEAU.pivote), [{l:'Ya',a:'beau-close'}]); return; } T.step=(T.step||1)+1; persist(); render(); },
   'tour-back':()=>{ S.tour.step=Math.max(1,(S.tour.step||1)-1); persist(); render(); },
   'tour-skip':()=>{ S.tour.done=true; persist(); render(); say('Si quieres ver el recorrido de nuevo, está en la sala de espera. Recuerda: deja otra pestaña abierta con tu buscador o tu guía.', [{l:'Ya',a:'beau-close'}]); },
